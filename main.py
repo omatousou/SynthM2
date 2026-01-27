@@ -12,7 +12,7 @@ from interface import SynthInterface
 class AppController:
     def __init__(self):
         """
-        Attributs d'instance utilisés dans la classe (17) :
+        ATTRIBUTS :
         self.app : QApplication principale
         self.gui : interface graphique
         self.audio : moteur audio
@@ -35,7 +35,6 @@ class AppController:
 
     def on_press(self, key):
         """
-        Algorithme détaillé :
         1. Vérifie si la touche pressée est dans self.NOTES_MAP.
         2. Si oui, récupère la fréquence associée à la touche.
         3. Ajoute cette fréquence à self.active_freqs.
@@ -50,7 +49,7 @@ class AppController:
 
     def on_release(self, key):
         """
-        Algorithme détaillé :
+
         1. Vérifie si la touche pressée est dans self.NOTES_MAP.
         2. Si oui, récupère la fréquence associée à la touche.
         3. Copie l'ensemble des fréquences actives dans self.previous_freqs.
@@ -66,7 +65,7 @@ class AppController:
 
     def play_block(self):
         """
-        Algorithme détaillé :
+
         1. Vérifie si self.is_playing ou self.waiting est vrai.
         2. Si oui, crée la liste freqs (self.previous_freqs si waiting, sinon self.active_freqs).
         3. Si freqs n'est pas vide :
@@ -85,7 +84,6 @@ class AppController:
 
     def end_wait(self):
         """
-        Algorithme détaillé :
         1. Passe self.waiting à False.
         2. Arrête le timer de lecture (self.timer.stop()).
         3. Vide self.plot_buffer.
@@ -95,14 +93,13 @@ class AppController:
 
     def on_close(self):
         """
-        Algorithme détaillé :
+
         1. Appelle self.audio.terminate() pour libérer les ressources audio lors de la fermeture de l'application.
         """
         pass
 
     def run(self):
         """
-        Algorithme détaillé :
         1. Affiche l'interface graphique (self.gui.show()).
         2. Démarre la boucle principale Qt (sys.exit(self.app.exec_())).
         """

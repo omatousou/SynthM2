@@ -9,7 +9,6 @@ class SynthInterface(QMainWindow):
 
     def __init__(self):
         """
-        Algorithme détaillé :
         1. Appelle le constructeur parent QMainWindow.
         2. Définit le titre de la fenêtre.
         3. Définit la taille de la fenêtre.
@@ -22,7 +21,6 @@ class SynthInterface(QMainWindow):
 
     def init_ui(self):
         """
-        Algorithme détaillé :
         1. Crée un widget central et le définit comme widget principal de la fenêtre.
         2. Crée un layout vertical pour organiser les éléments.
         3. Crée une combo box pour choisir la forme d'onde et désactive le focus clavier dessus.
@@ -50,14 +48,12 @@ class SynthInterface(QMainWindow):
 
     def keyPressEvent(self, event):
         """
-        Algorithme détaillé :
         1. Émet le signal key_pressed avec la touche pressée (event.key()).
         """
         self.key_pressed.emit(event.key())
 
     def keyReleaseEvent(self, event):
         """
-        Algorithme détaillé :
         1. Vérifie que l'événement n'est pas une répétition automatique de la touche.
         2. Si vrai, émet le signal key_released avec la touche relâchée (event.key()).
         """
@@ -66,7 +62,6 @@ class SynthInterface(QMainWindow):
 
     def update_display(self, t, data, text):
         """
-        Algorithme détaillé :
         1. Met à jour la courbe affichée avec les données temporelles t et les valeurs data.
         2. Met à jour le texte du label avec la chaîne text (fréquences ou état).
         """
@@ -75,7 +70,6 @@ class SynthInterface(QMainWindow):
 
     def closeEvent(self, event):
         """
-        Algorithme détaillé :
         1. Émet le signal close_signal pour prévenir la fermeture de l'application.
         2. Accepte l'événement de fermeture (ferme la fenêtre proprement).
         """

@@ -3,14 +3,13 @@ import numpy as np
 class SignalGenerator:
     def __init__(self, fs=44100):
         """
-        Algorithme détaillé :
         1. Initialise la fréquence d'échantillonnage (self.fs) avec la valeur fournie (par défaut 44100 Hz).
         """
         self.fs = fs
 
     def get_block(self, freqs, phases, duration, wave_type):
         """
-        Algorithme détaillé :
+
         1. Crée un vecteur temps t allant de 0 à duration avec un pas adapté à la fréquence d'échantillonnage.
         2. Initialise le signal sig à un tableau de zéros de la même taille que t.
         3. Pour chaque fréquence dans freqs :
