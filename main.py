@@ -8,127 +8,105 @@ from generator import SignalGenerator
 from audio_engine import AudioEngine
 from interface import SynthInterface
 
+
 class AppController:
     def __init__(self):
-        self.app = QApplication(sys.argv)
-        self.gui = SynthInterface()
-        self.audio = AudioEngine()
-        self.gen = SignalGenerator()
-
-        self.NOTES_MAP = {
-            Qt.Key_A: 261.63, Qt.Key_Z: 293.66, Qt.Key_E: 329.63,
-            Qt.Key_R: 349.23, Qt.Key_T: 392.00, Qt.Key_Y: 440.00, Qt.Key_U: 493.88
-        }
-
-        self.is_playing = False
-        self.active_freqs = set()
-        self.previous_freqs = set()
-        self.waiting = False
-        self.current_time = 0.0
-        self.phase_accum = {}  # Phase accumulator for each frequency
-        self.plot_buffer = []  # Buffer for plotting the sent signal
-
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.play_block)
-
-        # Connexion des signaux de l'interface
-        self.gui.key_pressed.connect(self.on_press)
-        self.gui.key_released.connect(self.on_release)
-        self.gui.close_signal.connect(self.on_close)
+        """
+        Attributs d'instance utilisés dans la classe (17) :
+        self.app : QApplication principale
+        self.gui : interface graphique
+        self.audio : moteur audio
+        self.gen : générateur de signal
+        self.NOTES_MAP : dictionnaire touches/fréquences
+        self.is_playing : booléen lecture en cours
+        self.active_freqs : fréquences actives
+        self.previous_freqs : fréquences précédentes
+        self.waiting : booléen attente fin de période
+        self.current_time : temps courant
+        self.phase_accum : accumulateur de phase
+        self.plot_buffer : buffer pour affichage
+        self.timer : QTimer pour lecture par blocs
+        self.wait_timer : QTimer pour attente fin de période
+        self.gen.fs : fréquence d'échantillonnage (via self.gen)
+        self.combo : sélection du type d'onde (via self.gui)
+        self.close_signal : signal de fermeture (via self.gui)
+        """
+        pass
 
     def on_press(self, key):
-        if key in self.NOTES_MAP:
-            freq = self.NOTES_MAP[key]
-            self.active_freqs.add(freq)
-            if freq not in self.phase_accum:
-                # Synchronize phase with average of existing phases for smooth addition
-                if self.phase_accum:
-                    self.phase_accum[freq] = sum(self.phase_accum.values()) / len(self.phase_accum)
-                else:
-                    self.phase_accum[freq] = 0.0
-            if not self.is_playing and self.active_freqs:
-                self.is_playing = True
-                self.timer.start(25)  # 25ms intervals
+        """
+        Algorithme détaillé :
+        1. Vérifie si la touche pressée est dans self.NOTES_MAP.
+        2. Si oui, récupère la fréquence associée à la touche.
+        3. Ajoute cette fréquence à self.active_freqs.
+        4. Si la fréquence n'est pas déjà dans self.phase_accum :
+            a. Si d'autres phases existent, synchronise la phase avec la moyenne des phases existantes.
+            b. Sinon, initialise la phase à 0.
+        5. Si aucune note n'était en cours de lecture et qu'il y a au moins une fréquence active :
+            a. Passe self.is_playing à True.
+            b. Démarre le timer pour jouer les blocs audio toutes les 25 ms.
+        """
+        pass
 
     def on_release(self, key):
-        if key in self.NOTES_MAP:
-            freq = self.NOTES_MAP[key]
-            self.previous_freqs = self.active_freqs.copy()
-            self.active_freqs.discard(freq)
-            if not self.active_freqs:
-                self.is_playing = False
-                self.waiting = True
-                # Continue playing the previous waveform until period ends
-                # But since it's looped, we need to wait for one period
-                # Calculate wait_time
-                periods = [Fraction(1/f).limit_denominator(1000) for f in self.previous_freqs]
-                if periods:
-                    denoms = [p.denominator for p in periods]
-                    common_d = 1
-                    for d in denoms:
-                        common_d = common_d * d // gcd(common_d, d)
-                    nums = [p.numerator * (common_d // p.denominator) for p in periods]
-                    lcm_num = nums[0]
-                    for n in nums[1:]:
-                        lcm_num = lcm_num * n // gcd(lcm_num, n)
-                    lcm_p = Fraction(lcm_num, common_d)
-                    lcm_period = float(lcm_p)
-                    wait_time = lcm_period
-                else:
-                    wait_time = 0
-                self.wait_timer = QTimer()
-                self.wait_timer.setSingleShot(True)
-                self.wait_timer.timeout.connect(self.end_wait)
-                self.wait_timer.start(int(wait_time * 1000))
-            # For partial release, update display
-            elif self.is_playing:
-                # Update display
-                duration = 0.025
-                t = np.linspace(0, duration, int(duration * self.gen.fs), endpoint=False)
-                sig = np.zeros_like(t)
-                for f in self.active_freqs:
-                    sig += np.sin(2 * np.pi * f * t)
-                sig /= len(self.active_freqs)
-                audio_data = (sig * 0.2 * 32767).astype(np.int16)
-                freq_text = ", ".join(f"{f:.1f}" for f in sorted(self.active_freqs))
-                self.gui.update_display(t, audio_data, f"{freq_text} Hz")
+        """
+        Algorithme détaillé :
+        1. Vérifie si la touche pressée est dans self.NOTES_MAP.
+        2. Si oui, récupère la fréquence associée à la touche.
+        3. Copie l'ensemble des fréquences actives dans self.previous_freqs.
+        4. Retire la fréquence de self.active_freqs.
+        5. Si plus aucune fréquence n'est active :
+            a. Passe self.is_playing à False et self.waiting à True.
+            b. Calcule la période d'attente (LCM des périodes des fréquences précédentes).
+            c. Crée un QTimer (self.wait_timer) pour attendre la fin de la période.
+        6. Sinon, si d'autres notes restent actives :
+            a. Met à jour l'affichage du signal restant sur l'interface.
+        """
+        pass
 
     def play_block(self):
-        if self.is_playing or self.waiting:
-            freqs = list(self.previous_freqs if self.waiting else self.active_freqs)
-            if freqs:
-                duration = 0.05  # Very short blocks
-                phases = {f: self.phase_accum[f] for f in freqs}
-                t, audio_data = self.gen.get_block(
-                    freqs, phases, duration, self.gui.combo.currentText()
-                )
-                # Update phases for next block
-                for f in freqs:
-                    self.phase_accum[f] += 2 * np.pi * f * duration
-                self.current_time += duration
-                self.audio.play(audio_data)
-                # Accumulate for plotting the signal sent to speaker
-                self.plot_buffer.extend(audio_data.tolist())
-                max_samples = int(0.05 * self.gen.fs)  # 0.05 second display (oscilloscope window)
-                if len(self.plot_buffer) > max_samples:
-                    self.plot_buffer = self.plot_buffer[-max_samples:]
-                # Fixed time scale for oscilloscope-like display
-                t_plot = np.linspace(0, 0.05, len(self.plot_buffer))
-                freq_text = ", ".join(f"{f:.1f}" for f in sorted(freqs))
-                self.gui.update_display(t_plot, np.array(self.plot_buffer), f"{freq_text} Hz")
+        """
+        Algorithme détaillé :
+        1. Vérifie si self.is_playing ou self.waiting est vrai.
+        2. Si oui, crée la liste freqs (self.previous_freqs si waiting, sinon self.active_freqs).
+        3. Si freqs n'est pas vide :
+            a. Définit duration à 0.05.
+            b. Crée le dictionnaire phases pour chaque fréquence.
+            c. Appelle self.gen.get_block pour générer le signal audio.
+            d. Met à jour la phase de chaque fréquence dans self.phase_accum.
+            e. Incrémente self.current_time de duration.
+            f. Joue le bloc audio avec self.audio.play.
+            g. Ajoute les données audio à self.plot_buffer.
+            h. Si self.plot_buffer dépasse la taille max, ne garde que les derniers échantillons.
+            i. Crée t_plot pour l'affichage.
+            j. Met à jour l'affichage graphique avec les fréquences jouées.
+        """
+        pass
 
     def end_wait(self):
-        self.waiting = False
-        self.timer.stop()
-        self.plot_buffer = []
-        self.gui.update_display([0], [0], "Repos")
+        """
+        Algorithme détaillé :
+        1. Passe self.waiting à False.
+        2. Arrête le timer de lecture (self.timer.stop()).
+        3. Vide self.plot_buffer.
+        4. Met à jour l'affichage graphique pour indiquer l'état de repos (self.gui.update_display).
+        """
+        pass
 
     def on_close(self):
-        self.audio.terminate()
+        """
+        Algorithme détaillé :
+        1. Appelle self.audio.terminate() pour libérer les ressources audio lors de la fermeture de l'application.
+        """
+        pass
 
     def run(self):
-        self.gui.show()
-        sys.exit(self.app.exec_())
+        """
+        Algorithme détaillé :
+        1. Affiche l'interface graphique (self.gui.show()).
+        2. Démarre la boucle principale Qt (sys.exit(self.app.exec_())).
+        """
+        pass
 
 if __name__ == "__main__":
     ctrl = AppController()
