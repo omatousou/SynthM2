@@ -127,58 +127,66 @@ class AppController:
             elif self.is_playing:
                 # Met à jour l'affichage du signal restant
                 duration = 0.025 # Durée de 25 ms pour l'affichage
-                t = np.linspace(0, duration, int(duration * self.gen.fs), endpoint=False) # Vecteur temps  
-                sig = np.zeros_like(t) # Initialise le signal à zéro
-                for freq in self.active_freqs:
-                    sig += self.gen.get_block(list(self.active_freqs), self.phase_accum, duration, self.gui.get_wave_type()) # Génère le signal audio
-                self.gui.update_display(t, sig, list(self.active_freqs)) # Met à jour l'affichage graphique
+                t = np.linspace(0, duration, int(duration * self.gen.fs), endpoint=False) # Vecteur temps
+                sig = self.gen.get_block(list(self.active_freqs), self.phase_accum, duration, self.gui.get_wave_type()) # Génère le signal audio correspondant aux fréquences restantes à jouer pour l'affichage graphique
+                self.gui.update_display(t, sig, list(self.active_freqs)) # Met à jour l'affichage graphique avec les fréquences restantes et le signal audio correspondant
 
 
     def play_block(self):
-        if self.is_playing or self.waiting:
-            if self.waiting:
-                freqs = self.previous_freqs
-            else:
-                freqs = self.active_freqs   
-        """
+        if self.is_playing or self.waiting: # Si on est en train de jouer ou en période d'attente
+            if self.waiting: # Si on est en période d'attente, on joue les fréquences précédentes pour faire une queue de résonance
+                freqs = self.previous_freqs # Utilise les fréquences précédentes pour continuer à jouer le son pendant la période d'attente
+            else: # Sinon, on joue les fréquences actives
+                freqs = self.active_freqs # Utilise les fréquences actives pour jouer le son
+        if freqs : 
+            duration = 0.05 # Durée de 50 ms pour le bloc audio
+            phases = {f: self.phase_accum.get(f, 0) for f in freqs} # Dictionnaire des phases pour chaque fréquence soit la phase accumulée, soit 0 si elle n'existe pas
+            t, block = self.gen.get_block(list(freqs), phases, duration, self.gui.get_wave_type()) # Génère le bloc audio avec les fréquences, les phases, la durée et le type d'onde sélectionné dans l'interface. 
+            #Appelle la méthode get_block de la classe SignalGenerator (via l’instance self.gen) pour obtenir le signal audio à jouer. Les arguments sont :
+            # list(freqs) : la liste des fréquences à jouer (convertie en liste à partir de l'ensemble freqs)
+            # phases : le dictionnaire des phases pour chaque fréquence
+            # duration : la durée du bloc audio à générer (0.05 secondes)
+            # self.gui.get_wave_type() : le type d'onde sélectionné dans l'interface graphique (Sinus, Carré ou Dents de scie)  
+            for f in freqs:
+                self.phase_accum[f] = (phases[f] + 2 * np.pi * f * duration) % (2 * np.pi) # Incrémente de duration à la phase de chaque fréquence (en radians), puis ramène la phase dans [0, 2π[ pour garantir la continuité périodique du signal
+            self.current_time += duration # Incrémente le temps courant de 0.05 s à chaque bloc audio (correspond à la durée du bloc)
+            self.audio.play(block) # Joue le bloc audio avec la méthode play de la classe AudioEngine (via l’instance self.audio). Le bloc audio est un tableau de samples converti en int16 et mis à l'échelle pour l'audio.
+            self.plot_buffer.extend(block) # Ajoute les données audio au buffer d'affichage pour pouvoir les afficher graphiquement dans l'interface
+            if len(self.plot_buffer) > self.gen.fs: # Si le buffer dépasse la taille maximale (1 seconde d'audio)
+                self.plot_buffer = self.plot_buffer[-self.gen.fs:] # Ne garde que les derniers échantillons pour l'affichage (correspond à 1 seconde d'audio)
+            t_plot = np.linspace(0, len(self.plot_buffer) / self.gen.fs, len(self.plot_buffer), endpoint=False) # Vecteur temps pour l'affichage correspondant à la taille du buffer d'affichage
+            self.gui.update_display(t_plot, self.plot_buffer, list(freqs)) # Met à jour l'affichage graphique avec les fréquences jouées et le signal audio correspondant. Les arguments sont :
+            # t_plot : le vecteur temps pour l'affichage graphique
+            # self.plot_buffer : le signal audio à afficher graphiquement (correspond au buffer d'affichage)
+            # list(freqs) : la liste des fréquences actuellement jouées (convertie en liste à partir de l'ensemble freqs) pour afficher les fréquences jouées dans l'interface.
 
-        1. Vérifie si self.is_playing ou self.waiting est vrai.
-        2. Si oui, crée la liste freqs (self.previous_freqs si waiting, sinon self.active_freqs).
-        3. Si freqs n'est pas vide :
-            a. Définit duration à 0.05.
-            b. Crée le dictionnaire phases pour chaque fréquence.
-            c. Appelle self.gen.get_block pour générer le signal audio.
-            d. Met à jour la phase de chaque fréquence dans self.phase_accum.
-            e. Incrémente self.current_time de duration.
-            f. Joue le bloc audio avec self.audio.play.
-            g. Ajoute les données audio à self.plot_buffer.
-            h. Si self.plot_buffer dépasse la taille max, ne garde que les derniers échantillons.
-            i. Crée t_plot pour l'affichage.
-            j. Met à jour l'affichage graphique avec les fréquences jouées.
-        """
-        pass
 
     def end_wait(self):
+        self.waiting = False # Passe waiting à False pour indiquer que la période d'attente est terminée
+        self.timer.stop() # Arrête le timer de lecture pour ne plus jouer de blocs audio
+        self.plot_buffer = [] # Vide le buffer d'affichage pour ne plus afficher de signal
+        self.gui.update_display([], [], "Repos") # Met à jour l'affichage graphique pour indiquer l'état de repos (aucune fréquence, aucun signal, texte "Repos")  
         """
         1. Passe self.waiting à False.
         2. Arrête le timer de lecture (self.timer.stop()).
         3. Vide self.plot_buffer.
         4. Met à jour l'affichage graphique pour indiquer l'état de repos (self.gui.update_display).
         """
-        pass
 
     def on_close(self):
         """
 
         1. Appelle self.audio.terminate() pour libérer les ressources audio lors de la fermeture de l'application.
         """
+        self.audio.terminate() # Appelle la méthode terminate de la classe AudioEngine (via l’instance self.audio) pour libérer les ressources audio utilisées par l'application lors de sa fermeture.
         pass
 
+        
+
     def run(self):
-        """
-        1. Affiche l'interface graphique (self.gui.show()).
-        2. Démarre la boucle principale Qt (sys.exit(self.app.exec_())).
-        """
+        self.gui.show() # Affiche l'interface graphique en appelant la méthode show de la classe SynthInterface (via l’instance self.gui)
+        sys.exit(self.app.exec_()) # Démarre la boucle principale de l'application Qt en appelant la méthode exec_ de l'instance self.app. sys.exit est utilisé pour s'assurer que le programme se termine proprement lorsque la boucle Qt est terminée (lorsque la fenêtre est fermée).
+
         pass
 
 if __name__ == "__main__":
