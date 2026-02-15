@@ -221,7 +221,7 @@ self.waiting           # État d'attente post-relâchement
 
 Pour chaque fréquence dans la polyphonie :
 
-$$\text{signal}(t) = \text{wave\_type}(2\pi f t + \phi(t))$$
+$$\text{signal}(t) = \text{wave\_{type}(2\pi f t + \phi(t))$$
 
 La phase est accumulée entre les blocs pour éviter les discontinuités :
 
