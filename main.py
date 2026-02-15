@@ -1,7 +1,6 @@
-
 import sys
 import numpy as np
-from math import gcd
+from math import gcd, lcm
 from fractions import Fraction
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt, QTimer
@@ -10,22 +9,60 @@ from audio_engine import AudioEngine
 from interface import SynthInterface
 
 
-class AppController:
+class App:
+## Initialisation de l'application
     def __init__(self):
-
-        ## ATTRIBUTS :
+        """
+        1) Initialise les composants de l'application : interface graphique, moteur audio et générateur de signal (autres fichiers)
+        2) Définit une fonction lambda pour calculer la fréquence d'une note MIDI à partir de son numéro de note (n) par la formule f telle que :
+            f = 440 * (2 ** ((n - 69) / 12))
+            convention MIDI, où la note 69 correspond au La4 (440 Hz).
+        3) Définit un dictionnaire NOTES_MAP qui associe les touches du clavier (Qt.Key_ + lettre) à des fréquences de notes de piano correspondantes.
+        4) Initialise les attributs spécifiques à l'application pour gérer l'état de lecture, les fréquences actives, les phases accumulées, le buffer d'affichage
+           et les timers pour la génération audio et la période d'attente après le relâchement de toutes les touches.
+        5) Connecte les signaux de l'interface graphique (pression de touche, relâchement de touche, fermeture de la fenêtre) aux fonctions de gestion correspondantes (callbacks).
+        
+        Attributs de la classe App :
+        - app : instance de QApplication pour gérer l'application Qt
+        - gui : instance de SynthInterface pour gérer l'interface graphique
+        - audio : instance de AudioEngine pour gérer la sortie audio
+        - gen : instance de SignalGenerator pour générer les blocs audio
+        - NOTES_MAP : dictionnaire associant les touches du clavier à des fréquences de notes de piano
+        - is_playing : booléen indiquant si une note est en cours de lecture
+        - active_freqs : set des fréquences actuellement jouées
+        - previous_freqs : dictionnaire des fréquences jouées avant l'arrêt avec leurs phases accumulées
+        - waiting : booléen indiquant si on est en période d'att    ente avant d'arrêter le son
+        - current_time : type float, temps courant en secondes pour la génération audio
+        - phase_accum : dictionnaire d'accumulateurs de phase pour chaque fréquence pour garantir la continuité du signal entre les blocs audio
+        - plot_buffer : liste pour stocker les échantillons audio à afficher dans l'oscilloscope de l'interface graphique
+        - timer : QTimer pour gérer les intervalles de temps entre les blocs audio générés et joués
+        - release_timer : QTimer pour la période d'attente (fade-out/queue de résonance) après le relâchement de toutes les touches 
+        Methodes de la classe App :
+        - key_pressed_callback : gère les événements de pression de touche, met à jour les fréquences actives, démarre la lecture et le timer pour générer les blocs audio.
+        - key_released_callback : gère les événements de relâchement de touche, met à jour les fréquences actives, démarre la période d'attente pour le fade-out après le relâchement de toutes les touches.
+        - end_timer_callback : génère et joue un bloc audio basé sur les fréquences actives à chaque timeout du timer.
+        - end_play_callback : arrête complètement le son et réinitialise les états après la période d'attente
+        - close_callback : libère les ressources audio lors de la fermeture de l'application.
+        - run : lance l'application en affichant l'interface graphique et en exécutant la boucle principale.
+        
+        """ 
+        # 1) 
         self.app = QApplication(sys.argv) # Application Qt. sys.argv : argument vector est la liste des paramètres envoyés au programme lors de son lancement. Ici contient le chemin vers le fichier Python.
-                                          # Exemple : python mon_jeu.py --fullscreen --level 5 ALORS sys.argv[0] : "mon_jeu.py" sys.argv[1] : "--fullscreen" sys.argv[2] : "--level"sys.argv[3] : "5"
+        #                                   Exemple : python mon_jeu.py --fullscreen --level 5 ALORS sys.argv[0] : "mon_jeu.py" sys.argv[1] : "--fullscreen" sys.argv[2] : "--level"sys.argv[3] : "5"
         self.gui = SynthInterface() # Import de la classe SynthInterface dans le fichier interface.py
         self.audio = AudioEngine() # Import de la classe AudioEngine dans le fichier audio_engine.py
         self.gen = SignalGenerator() # Import de la classe SignalGenerator dans le fichier generator.py
 
 
-        # f = 440 * (2 ** ((n - 69) / 12)):  convention MIDI, où la note 69 correspond au La4 (440 Hz). http://antoinegabrielbrun.com/ressources/frequence-des-notes-de-la-gamme/
+
+        # 2 )
+        # Définition d'une fonction lambda pour calculer la fréquence d'une note MIDI à partir de son numéro de note (n) par la formule f telle que :
+        # f = 440 * (2 ** ((n - 69) / 12))
+        # convention MIDI, où la note 69 correspond au La4 (440 Hz). http://antoinegabrielbrun.com/ressources/frequence-des-notes-de-la-gamme/
         calc_freq = lambda n: round(440 * (2 ** ((n - 69) / 12)), 2)
 
-        # Touche Midi : Frequences associées
-
+        # 3)
+        # Touche Midi :
         self.NOTES_MAP = {
             # Touches Blanches
             Qt.Key_Q: calc_freq(60),  # Do (C4)
@@ -39,7 +76,7 @@ class AppController:
             Qt.Key_L: calc_freq(74),  # Ré
 
             # Touches Noires
-            Qt.Key_Z: calc_freq(61),  # Do#
+            Qt.Key_A: calc_freq(61),  # Do#
             Qt.Key_E: calc_freq(63),  # Ré#
             Qt.Key_T: calc_freq(66),  # Fa#
             Qt.Key_Y: calc_freq(68),  # Sol#
@@ -47,148 +84,216 @@ class AppController:
             Qt.Key_O: calc_freq(73),  # Do#
             Qt.Key_P: calc_freq(75),  # Ré#
 }
-
-
+        # 4) Attributs spécifiques à l'App :
         self.is_playing = False # Indique si une note est en cours de lecture
         self.active_freqs = set() # Fréquences actuellement jouées. Utilisation d'un set pour éviter les doublons
-        self.previous_freqs = set() # Fréquences jouées avant l'arrêt. Utilisation d'un set pour éviter les doublons
+        self.previous_freqs = {} # Fréquences jouées avant l'arrêt avec leurs phases accumulées. Utilisation d'un dict pour stocker les phases
         self.waiting = False # Indique si on est en période d'attente avant d'arrêter le son
         self.current_time = 0.0 # Temps courant en secondes
-        self.phase_accum = {}  # Accumulateur de phase pour chaque fréquence
-        self.plot_buffer = []  # Buffer pour l'affichage graphique
+        self.phase_accum = {}  # Accumulateur de phase pour chaque fréquence. Utilisation d'un dictionnaire pour eviter les problèmes d'indexation et permettre un accès direct par fréquence.
+        #                        On indexe la phase accumulée à la fin de chaque bloc audio pour que le bloc suivant puisse commencer 
+        #                        au bon endroit permet d'eviter les glitch audible entre les blocs
+        self.plot_buffer = []  # Buffer pour l'affichage graphique taille variable pour stocker les échantillons audio à afficher
+        #                        On limite sa taille pour n'afficher que les échantillons les plus récents 
+        #                        afin d'éviter une croissance infinie du buffer et de garantir une réactivité de l'affichage.
 
-        # Configure une alarme qui déclenchera la fonction "play_block" à chaque fois que le délai sera écoulé.
-        self.timer = QTimer() #in
-        self.timer.timeout.connect(self.play_block) # timeout signale émis lorsque le délai est écoulé (délai défini par start) et appelle play_block. Le lien est fait via la méthode connect.
+        # Configure une alarme qui déclenchera la fonction "end_timer_callback" à chaque fois que le délai sera écoulé.
+        self.timer = QTimer() # Definit un timer Qt pour gérer les intervalles de temps entre les blocs audio générés et joués.
+        self.timer.timeout.connect(self.end_timer_callback) # Quand timeout se produit quand le temps du timer est écoulé, il trigg end_timer_callback via la méthode connect.
+        
+        self.release_timer = None  # Timer pour la période d'attente (fade-out/queue de résonance) après relâchement de toutes les touches.
+        #                         Quand l'utilisateur relâche la dernière touche, on continue à jouer les fréquences relâchées pendant une courte durée
+        #                         (déterminée par le LCM des périodes) pour éviter un arrêt brutal du son, donnant une queue de résonance naturelle.
+        #                         Si l'utilisateur appuie sur une nouvelle touche avant le timeout, on arrête ce timer pour redémarrer immédiatement.
 
-        # Connexion des signaux de l'interface
-        # Connecte les événements d'entrée (clavier et fermeture) aux fonctions de gestion correspondantes.
-        self.gui.key_pressed.connect(self.on_press) # Si une touche est pressée, appelle on_press. Le lien est fait via la méthode connect.
-        self.gui.key_released.connect(self.on_release) # Si une touche est relâchée, appelle on_release. Le lien est fait via la méthode connect.
-        self.gui.close_signal.connect(self.on_close) # Si la fenêtre est fermée, appelle on_close. Le lien est fait via la méthode connect.
 
-    def on_press(self, key):
+        # 5) Connecte les événements d'entrée (touche préssées et relâchées, fermeture) aux callbacks correspondants pour gérer les interactions de l'utilisateur avec l'interface graphique.
+
+        self.gui.key_pressed.connect(self.key_pressed_callback) # Si une touche est pressée, appelle key_pressed_callback. Le lien est fait via la méthode "connect"
+        self.gui.key_released.connect(self.key_released_callback) # Si une touche est relâchée, appelle key_released_callback. Le lien est fait via la méthode "connect"
+        self.gui.close_signal.connect(self.close_callback) # Si la fenêtre est fermée, appelle close_callback. Le lien est fait via la méthode "connect"
+
+ 
+## Callbacks : 
+
+    def key_pressed_callback(self, key): # Lorsque une touche est pressée, cette fonction est appelée, l'entrée est la touche
         """
-        1. Récupère et vérifie si la touche pressée est dans self.NOTES_MAP.
-        2. Si oui, récupère la fréquence associée à la touche.
-        3. Ajoute cette fréquence à self.active_freqs.
-        4. Si la fréquence n'est pas déjà dans self.phase_accum :
-            a. Si d'autres phases existent, synchronise la phase avec la moyenne des phases existantes.
-            b. Sinon, initialise la phase à 0.
-        5. Si aucune note n'était en cours de lecture et qu'il y a au moins une fréquence active :
-            a. Passe self.is_playing à True.
-            b. Démarre le timer pour jouer les blocs audio toutes les 25 ms.
+        Callback appelé lorsqu'une touche est pressée
+        param key : la touche pressée Qt.Key_ + lettre (ex: Qt.Key_Q)
+
+        1) Vérifie si la touche pressée correspond à une note définie dans NOTES_MAP (c'est-à-dire une touche de piano valide)
+            -  Si c'est le cas, met à jour l'état de la touche dans l'interface graphique pour la mettre en surbrillance (orange)
+            - Récupère la fréquence correspondante à la touche pressée à partir du dictionnaire NOTES_MAP
+        2) Si la fréquence n'est pas déjà dans l'accumulateur de phase (phase_accum): 
+            - Initialise la phase à 0 pour les nouvelles fréquences
+        
+        3) Ajoute la fréquence au set phase_accum
+            - Si aucune note n'était en train de jouer (active_freqs vide)
+                - is_playing → True (on joue du son)
+                - waiting → False (on quitte la période d'attente de pressions)
+            - Si release_timer existe et est actif
+                - on l'arrête
+            - On relance le timer de 25 ms pour générer et jouer un bloc audio
+
         """
-        key_freq = self.NOTES_MAP.get(key) # Récupère la fréquence associée à la touche pressée
-        if key_freq: # Si la touche est dans self.NOTES_MAP
-            self.active_freqs.add(key_freq) # Ajoute la fréquence à l'ensemble des fréquences actives
-            # Pour eviter les glitches, on synchronise la phase des nouvelles notes avec la moyenne des phases existantes
-            if key_freq not in self.phase_accum: # Si la fréquence n'a pas encore de phase accumulée
-                if self.phase_accum: # S'il y a déjà des phases accumulées
-                    avg_phase = np.mean(list(self.phase_accum.values())) # Calcule la moyenne des phases existantes
-                    self.phase_accum[key_freq] = avg_phase # Initialise la phase de la nouvelle fréquence avec la moyenne
-                else:
-                    self.phase_accum[key_freq] = 0.0 # Sinon, initialise la phase à 0
+        # 1)
+        if key in self.NOTES_MAP: # Vérifie si la touche pressée correspond à une note définie dans NOTES_MAP (c'est-à-dire une touche de piano valide)
+            self.gui.keyboard.set_key_active(key, True)  # Signal pour mettre en orange la touche du clavier dans l'interface graphique lorsque la touche est pressée
+            freq = self.NOTES_MAP[key] # Récupère la fréquence correspondante à la touche pressée à partir du dictionnaire NOTES_MAP
+        # 2)    
+            # Si la fréquence n'est pas déjà dans l'accumulateur de phase, on l'initialise. On utilise la moyenne des phases existantes pour éviter les clics lors de l'ajout d'une nouvelle note
+            if freq not in self.phase_accum:  # Si la fréquence n'est pas déjà dans l'accumulateur de phase, on l'initialise
+                    self.phase_accum[freq] = 0.0 # Initialisation de la phase à 0 pour les nouvelles fréquences
+        # 3)    
+            self.active_freqs.add(freq) # Ajoute la fréquence au set des fréquences jouées
+        # 4)
+            if not self.is_playing: # Si aucune note n'était en train de jouer avant cette pression, on démarre la lecture et le timer pour générer les blocs audio
+                self.is_playing = True # Indique que le son est en train de jouer
+                self.waiting = False # Si on était en période d'attente de pressions, on la quitte immédiatement
+                if self.release_timer and self.release_timer.isActive(): # Verfie si release_timer existe et est actif (ce qui signifie qu'on était en période d'attente après le relâchement de toutes les touches)
+                    self.release_timer.stop() # Si on était en période d'attente, on arrête ce timer pour relancer le timer et eviter de continuer à jouer les fréquences relâchées jsuqu'à la fin du timer
+                self.timer.start(25)  # Le timer de 25 ms se lance pour générer et jouer un bloc audio
 
-            if not self.is_playing and self.active_freqs: # Si aucune note n'était en cours de lecture et qu'il y a au moins une fréquence active
-                self.is_playing = True # Passe is_playing à True
-                self.timer.start(25)  # Joue les blocs audio toutes les 25 ms
-
-    def on_release(self, key):
+    def key_released_callback(self, key): # Lorsque une touche est relâchée, cette fonction est appelée, l'entrée est la touche
         """
+        Callback appelé lorsqu'une touche est relachée.
+        param key : la touche relachée Qt.Key_ + lettre (ex: Qt.Key_Q)
 
-        1. Vérifie si la touche pressée est dans self.NOTES_MAP.
-        2. Si oui, récupère la fréquence associée à la touche.
-        3. Copie l'ensemble des fréquences actives dans self.previous_freqs.
-        4. Retire la fréquence de self.active_freqs.
-        5. Si plus aucune fréquence n'est active :
-            a. Passe self.is_playing à False et self.waiting à True.
-            b. Calcule la période d'attente (PGCD (LCM) des périodes des fréquences précédentes).
-            c. Crée un QTimer (self.wait_timer) pour attendre la fin de la période.
-        6. Sinon, si d'autres notes restent actives :
-            a. Met à jour l'affichage du signal restant sur l'interface.
+            1) Vérifie si la touche relâchée correspond à une note définie dans NOTES_MAP (c'est-à-dire une touche de piano valide)
+            - Si c'est le cas, met à jour l'état de la touche dans l'interface graphique pour la désactiver (retirer la surbrillance) set_key_active a comme argument la touche et False
+            - Récupère la fréquence correspondante à la touche relâchée à partir du dictionnaire NOTES_MAP.
+            - Supprime la fréquence du set des fréquences actives (active_freqs).
+            2)  Si aucune active_freqs est vide, cela signifie que toutes les touches ont été relâchées, on démarre la période d'attente pour le fade-out :
+                - is_playing → False (on arrête de jouer du son)
+                - waiting → True (on entre en période d'attente de pressions)
+                - previous_freqs : on stocke les fréquences qui étaient actives avant l'arrêt pour continuer à les jouer pendant la période d'attente
+            3) On démarre un timer (release_timer) pour la période d'attente qui déclenchera end_play_callback à la fin du temps d'attente (10 ms) pour arrêter complètement le son et réinitialiser les états.  
+        """ 
+        # 1 )
+        if key in self.NOTES_MAP:
+            self.gui.keyboard.set_key_active(key, False)  # Signal pour retirer la surbrillance de la touche du clavier dans l'interface graphique lorsque la touche est relâchée
+            freq = self.NOTES_MAP[key] # Récupère la fréquence correspondante à la touche relâchée à partir du dictionnaire NOTES_MAP
+            self.active_freqs.discard(freq) # Supprime la fréquence du set des fréquences actives (active_freqs). discard : supprime l'élément du set s'il est présent, sinon ne fait rien (pas d'erreur)
+        # 2 )
+            if not self.active_freqs: # Si aucune fréquence n'est active, cela signifie que toutes les touches ont été relâchées, on démarre la période d'attente pour le fade-out
+                self.is_playing = False # Indique que le son n'est plus en train de jouer
+                self.waiting = True     # Indique que l'on est en période d'attente de pressions
+                self.previous_freqs = {f: self.phase_accum[f] for f in self.phase_accum if self.phase_accum[f] is not None} # Stocke les fréquences qui étaient actives avant l'arrêt pour
+                # continuer à les jouer pendant la période d'attente. On stocke aussi la phase accumulée pour chaque fréquence pour garantir une continuité du signal pendant la période d'attente.
+                
+        # 3)
+                self.release_timer = QTimer() # Crée un timer pour la période d'attente qui déclenchera end_play_callback à la fin du chrono
+                self.release_timer.setSingleShot(True) # Configure le timer pour qu'il ne s'execute qu'une seule fois (single shot) après le délai défini
+                self.release_timer.timeout.connect(self.end_play_callback) # Connecte le signal timeout du timer à la fonction end_play_callback avec la méthode connect
+                self.release_timer.start(10)  # Démarre le timer de 10 ms pour la période d'attente avant d'arrêter complètement le son et réinitialiser les états
+
+    def end_timer_callback(self):
         """
-        key_freq = self.NOTES_MAP.get(key) # Récupère la fréquence associée à la touche pressée
-        if key_freq: # Si la touche est dans self.NOTES_MAP
-            self.previous_freqs = self.active_freqs.copy() # Copie l'ensemble des fréquences actives dans self.previous_freqs
-            self.active_freqs.remove(key_freq) # Retire la fréquence de l'ensemble des fréquences actives
-            if not self.active_freqs: # Si plus aucune fréquence n'est active
-                self.is_playing = False # Passe is_playing à False
-                self.waiting = True # Passe waiting à True
-
-                self.wait_timer = QTimer() # Crée un QTimer pour gérer la période d'attente
-                # Calcul de la période d'attente comme le PPCM des périodes des fréquences précédentes  
-                periods = [Fraction(1, f).limit_denominator(1000) for f in self.previous_freqs] # Liste des périodes sous forme de fractions les plus simples maximum 1/1000
-                wait_time = np.lcm(periods)
-                self.wait_timer = QTimer()
-                self.wait_timer.setSingleShot(True)
-                self.wait_timer.timeout.connect(self.end_wait)
-                self.wait_timer.start(int(wait_time * 1000))
-            elif self.is_playing:
-                # Met à jour l'affichage du signal restant
-                duration = 0.025 # Durée de 25 ms pour l'affichage
-                t = np.linspace(0, duration, int(duration * self.gen.fs), endpoint=False) # Vecteur temps
-                sig = self.gen.get_block(list(self.active_freqs), self.phase_accum, duration, self.gui.get_wave_type()) # Génère le signal audio correspondant aux fréquences restantes à jouer pour l'affichage graphique
-                self.gui.update_display(t, sig, list(self.active_freqs)) # Met à jour l'affichage graphique avec les fréquences restantes et le signal audio correspondant
-
-
-    def play_block(self):
-        if self.is_playing or self.waiting: # Si on est en train de jouer ou en période d'attente
-            if self.waiting: # Si on est en période d'attente, on joue les fréquences précédentes pour faire une queue de résonance
-                freqs = self.previous_freqs # Utilise les fréquences précédentes pour continuer à jouer le son pendant la période d'attente
-            else: # Sinon, on joue les fréquences actives
-                freqs = self.active_freqs # Utilise les fréquences actives pour jouer le son
-        if freqs : 
-            duration = 0.05 # Durée de 50 ms pour le bloc audio
-            phases = {f: self.phase_accum.get(f, 0) for f in freqs} # Dictionnaire des phases pour chaque fréquence soit la phase accumulée, soit 0 si elle n'existe pas
-            t, block = self.gen.get_block(list(freqs), phases, duration, self.gui.get_wave_type()) # Génère le bloc audio avec les fréquences, les phases, la durée et le type d'onde sélectionné dans l'interface. 
-            #Appelle la méthode get_block de la classe SignalGenerator (via l’instance self.gen) pour obtenir le signal audio à jouer. Les arguments sont :
-            # list(freqs) : la liste des fréquences à jouer (convertie en liste à partir de l'ensemble freqs)
-            # phases : le dictionnaire des phases pour chaque fréquence
-            # duration : la durée du bloc audio à générer (0.05 secondes)
-            # self.gui.get_wave_type() : le type d'onde sélectionné dans l'interface graphique (Sinus, Carré ou Dents de scie)  
-            for f in freqs:
-                self.phase_accum[f] = (phases[f] + 2 * np.pi * f * duration) % (2 * np.pi) # Incrémente de duration à la phase de chaque fréquence (en radians), puis ramène la phase dans [0, 2π[ pour garantir la continuité périodique du signal
-            self.current_time += duration # Incrémente le temps courant de 0.05 s à chaque bloc audio (correspond à la durée du bloc)
-            self.audio.play(block) # Joue le bloc audio avec la méthode play de la classe AudioEngine (via l’instance self.audio). Le bloc audio est un tableau de samples converti en int16 et mis à l'échelle pour l'audio.
-            self.plot_buffer.extend(block) # Ajoute les données audio au buffer d'affichage pour pouvoir les afficher graphiquement dans l'interface
-            if len(self.plot_buffer) > self.gen.fs: # Si le buffer dépasse la taille maximale (1 seconde d'audio)
-                self.plot_buffer = self.plot_buffer[-self.gen.fs:] # Ne garde que les derniers échantillons pour l'affichage (correspond à 1 seconde d'audio)
-            t_plot = np.linspace(0, len(self.plot_buffer) / self.gen.fs, len(self.plot_buffer), endpoint=False) # Vecteur temps pour l'affichage correspondant à la taille du buffer d'affichage
-            self.gui.update_display(t_plot, self.plot_buffer, list(freqs)) # Met à jour l'affichage graphique avec les fréquences jouées et le signal audio correspondant. Les arguments sont :
-            # t_plot : le vecteur temps pour l'affichage graphique
-            # self.plot_buffer : le signal audio à afficher graphiquement (correspond au buffer d'affichage)
-            # list(freqs) : la liste des fréquences actuellement jouées (convertie en liste à partir de l'ensemble freqs) pour afficher les fréquences jouées dans l'interface.
-
-
-    def end_wait(self):
-        self.waiting = False # Passe waiting à False pour indiquer que la période d'attente est terminée
-        self.timer.stop() # Arrête le timer de lecture pour ne plus jouer de blocs audio
-        self.plot_buffer = [] # Vide le buffer d'affichage pour ne plus afficher de signal
-        self.gui.update_display([], [], "Repos") # Met à jour l'affichage graphique pour indiquer l'état de repos (aucune fréquence, aucun signal, texte "Repos")  
+        Callback appelé à chaque timeout du timer (25ms) pour générer et jouer des blocs audio continuants.
+        
+        Logique :
+        1) Vérifie si l'audio est actif (is_playing ou waiting). Si non met fin à la fonction pour ne pas générer de son inutilement
+        2) Si on est en attente ou en lecture (waiting ou is_playing), on sélectionne les fréquences à jouer :
+            - Si self.waiting, joue previous_freqs
+            - Sinon joue active_freqs
+        3) Si aucune fréquence n'est disponible, on ne joue rien, fin de fonction
+        4) Crée la durée du bloc audio à générer (50 ms) et récupère les phases accumulées pour les fréquences à jouer
+        5) Génère un bloc audio de 50 ms avec les phases accumulées
+        6) Joue le bloc audio via le moteur audio
+        7) Met à jour le buffer d'affichage en limitant à 30ms de données récentes pour la réactivité
+        8) Met à jour l'oscilloscope avec les données temporelles et les amplitudes
+        ç) Gestion des exceptions
         """
-        1. Passe self.waiting à False.
-        2. Arrête le timer de lecture (self.timer.stop()).
-        3. Vide self.plot_buffer.
-        4. Met à jour l'affichage graphique pour indiquer l'état de repos (self.gui.update_display).
-        """
-
-    def on_close(self):
-        """
-
-        1. Appelle self.audio.terminate() pour libérer les ressources audio lors de la fermeture de l'application.
-        """
-        self.audio.terminate() # Appelle la méthode terminate de la classe AudioEngine (via l’instance self.audio) pour libérer les ressources audio utilisées par l'application lors de sa fermeture.
-        pass
-
+        # 1)
+        # Vérifier que l'audio est actif; sinon terminer
+        if not (self.is_playing or self.waiting):
+            return
+        # 2)
+        # Sélectionner les fréquences à jouer selon l'état
+        if self.waiting:
+            freqs = list(self.previous_freqs.keys()) # En période d'attente, on joue les fréquences précédentes en fade-out
+        else:
+            freqs = list(self.active_freqs) # En lecture normale, on joue les fréquences actives
+        
+        # 3)
+        if not freqs: # Si aucune fréquence n'est disponible, on ne joue rien, fin de fonction
+            return
+        
+        # 4)
+        duration = 0.05  # Définir la durée du bloc audio à générer (50 ms)
+        phases = {f: self.phase_accum.get(f, 0.0) for f in freqs} # Récupérer les phases accumulées pour les fréquences à jouer, ou 0.0 si elles n'existent pas (self.phase_accum.get(f, 0.0))
         
 
-    def run(self):
-        self.gui.show() # Affiche l'interface graphique en appelant la méthode show de la classe SynthInterface (via l’instance self.gui)
-        sys.exit(self.app.exec_()) # Démarre la boucle principale de l'application Qt en appelant la méthode exec_ de l'instance self.app. sys.exit est utilisé pour s'assurer que le programme se termine proprement lorsque la boucle Qt est terminée (lorsque la fenêtre est fermée).
+        try: #utilisation d'un bloc try-except pour capturer et afficher les erreurs potentielles lors de la génération et de la lecture du bloc audio, ainsi que lors de la mise à jour de l'affichage.
+        # 5) Générer un bloc audio de 50 ms avec les phases accumulées
+            t, audio_data = self.gen.get_block(freqs, phases, duration, self.gui.get_wave_type()) # Générer un bloc audio de 50 ms avec les phases accumulées avec gen.get_block(freqs,phases,duration,wave_type)
+            #                                                                                       gui.get_wave_type() : récupère le type d'onde sélectionné dans l'interface graphique (sinus, carré, triangle, scie)
+            
+            for f in freqs: # pour chaque fréquence jouée, on met à jour la phase accumulée pour le prochain bloc afin d'éviter les clics/ruptures
+                self.phase_accum[f] = (self.phase_accum.get(f, 0.0) + 2 * np.pi * f * duration) % (2 * np.pi) # Évolution sur 50ms avec phase accumulée f, ou 0.0 si elle n'existe pas (self.phase_accum.get(f, 0.0))
+            
+        # 6)
+            self.current_time += duration # MAJ du temps courant
+            self.audio.play(audio_data) #Jouer le bloc audio via le moteur audio (audio.play(audio_data))
+        # 7)   
+            self.plot_buffer.extend(audio_data.tolist()) # On convertit le bloc audio en liste pour l'ajouter au plot du buffer qui est une liste . blablabla.extend() ajoute les éléments d'une liste à une autre liste
+            max_samples = int(0.03 * self.gen.fs)  # Limiter le buffer à un nombre d'échantillons correspondant à 30 ms pour garantir la réactivité de l'affichage (0.03 * fréquence d'échantillonnage → attribut fs de gen)
+            if len(self.plot_buffer) > max_samples: # Si le buffer dépasse la taille maximale
+                self.plot_buffer = self.plot_buffer[-max_samples:] # On tronque le buffer d'affichage
+            
+        # 8)
+            t_plot = np.linspace(0, 0.05, len(self.plot_buffer)) # Abscisse temporelle
+            self.gui.update_display(t_plot, np.array(self.plot_buffer)) # MAJ de l'oscillo
 
-        pass
+        # 9) 
+        except Exception as e: # Si exception
+            print(f"Error in play_block: {e}") # Affichage message d'erreur
+    
+    def end_play_callback(self): # Cette fonction est appelée lorsque la période d'attente après le relâchement de toutes les touches est terminée pour arrêter complètement le son et réinitialiser les états.
+        """
+        Callback appelé à la fin de la période d'attente après le relâchement de toutes les touches pour arrêter complètement le son et réinitialiser les états.
+        1) Passe is_waiting → False on sort de la période d'attente
+        2) Arrête le timer self.timer qui génère les blocs audio
+        3) Réinitialise le buffer d'affichage
+        4) Met à jour l'affichage pour montrer un signal plat
+        """
+        # 1 )
+        self.waiting = False # On sort de la période d'attente, on ne joue plus les fréquences relâchées
+        # 2 )
+        self.timer.stop() # Arrête le timer qui génère les blocs audio
+        # 3 )
+        self.plot_buffer = [] # Réinitialise le buffer d'affichage pour ne plus afficher les anciens échantillons
+        # 4 )
+        self.gui.update_display([0], [0]) # Met à jour l'affichage pour montrer un signal plat
+    
+    def close_callback(self): # Cette fonction est appelée lorsque la fenêtre de l'application est fermée pour s'assurer que les ressources audio sont correctement libérées.
+        """
+        Callback appelé lors de la fermeture de l'application pour libérer les ressources audio.
+        1) Appelle la méthode terminate de l'instance audio pour arrêter l'audio
+        """
+        # 1 )
+        self.audio.terminate() 
 
+## Fonction pour lancer l'application       
+    def run(self): # Cette fonction lance l'application en affichant l'interface graphique et en exécutant la boucle principale
+        """ 
+        Lance l'application en affichant l'interface graphique et en exécutant la boucle principale
+        1) Affiche l'interface graphique en appelant la méthode show de l'instance gui
+        2) Exécute la boucle principale de l'application en appelant app.exec_() et en passant le résultat à sys.exit pour assurer une sortie propre de l'application lorsque elle est fermée
+        """
+        # 1)
+        self.gui.show() # Affiche l'interface graphique en appelant la méthode show de l'instance gui
+        # 2)
+        sys.exit(self.app.exec_()) # Exécute la boucle principale de l'application en appelant app.exec_() et en passant le résultat à sys.exit pour assurer une sortie propre de l'application lorsque elle est fermée
+
+## Lancement de l'application
 if __name__ == "__main__":
-    ctrl = AppController()
-    ctrl.run()
+    """
+    Point d'entrée de l'application. Crée une instance de la classe App et lance l'application en appelant la méthode run.
+    1) Crée une instance de la classe App
+    2) Appelle la méthode run de l'instance App pour lancer l'application
+    """
+    # 1)
+    app = App()
+    # 2)
+    app.run()
