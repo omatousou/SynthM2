@@ -49,7 +49,7 @@ class AudioEngine:
                     data = data.astype(np.int16)
                 if data.ndim == 1: # Si les données sont mono, les reshape pour qu'elles soient compatibles avec le flux audio (shape (N, 1))
                     data = data.reshape(-1, 1) # Reshape pour mono
-            self.stream.write(data)
+            self.stream.write(data) # transmet à la carte son via PortAudio, qui le joue dans les haut-parleurs.
         # 4)
         except Exception as e: # Si une erreur survient lors de la lecture des données audio
             print(f"Erreur lors de la lecture des données audio : {e}") # Affiche un message d'erreur
