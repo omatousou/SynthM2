@@ -136,7 +136,7 @@ class App:
         """
         # 1)
         if key in self.NOTES_MAP: # Vérifie si la touche pressée correspond à une note définie dans NOTES_MAP (c'est-à-dire une touche de piano valide)
-            self.gui.keyboard.set_key_active(key, True)  # Signal pour mettre en orange la touche du clavier dans l'interface graphique lorsque la touche est pressée
+            self.gui.set_key_active(key, True)  # Signal pour mettre en orange la touche du clavier dans l'interface graphique lorsque la touche est pressée
             freq = self.NOTES_MAP[key] # Récupère la fréquence correspondante à la touche pressée à partir du dictionnaire NOTES_MAP
         # 2)    
             # Si la fréquence n'est pas déjà dans l'accumulateur de phase, on l'initialise. On utilise la moyenne des phases existantes pour éviter les clics lors de l'ajout d'une nouvelle note
@@ -169,7 +169,7 @@ class App:
         """ 
         # 1 )
         if key in self.NOTES_MAP:
-            self.gui.keyboard.set_key_active(key, False)  # Signal pour retirer la surbrillance de la touche du clavier dans l'interface graphique lorsque la touche est relâchée
+            self.gui.set_key_active(key, False)  # Signal pour retirer la surbrillance de la touche du clavier dans l'interface graphique lorsque la touche est relâchée
             freq = self.NOTES_MAP[key] # Récupère la fréquence correspondante à la touche relâchée à partir du dictionnaire NOTES_MAP
             self.active_freqs.discard(freq) # Supprime la fréquence du set des fréquences actives (active_freqs). discard : supprime l'élément du set s'il est présent, sinon ne fait rien (pas d'erreur)
         # 2 )
