@@ -52,7 +52,6 @@ class SynthInterface(QMainWindow):
         # Clavier MIDI
         self.white_keys = ["Q", "Z", "S", "E", "D", "F", "T", "G", "Y", "H", "U", "J", "K", "O", "L", "P"]
         self.black_keys = ["Z", "E", "T", "Y", "U", "O", "P"]
-        self.keyboard = self  # Référence à self pour l'accès simple aux méthodes de mise à jour du clavier
 
         # 5)
         self.init_ui() # Initialisation de l'interface utilisateur
@@ -117,9 +116,6 @@ class SynthInterface(QMainWindow):
             keys_layout.addWidget(btn) # On ajoute le bouton à l'agencement des touches
         
         main_layout.addLayout(keys_layout) # On ajoute l'agencement des touches à l'agencement principal
-        
-        # self.keyboard pointe vers self pour l'accès simple: self.gui.keyboard.set_key_active()
-        self.keyboard = self
 
     def get_wave_type(self):
         """Méthode pour que le 'Main' puisse savoir quelle onde est choisie"""
