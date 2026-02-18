@@ -27,7 +27,7 @@ class AudioEngine:
         1) Vérifie que le flux audio est actif
         2) Si le flux audio n'est pas actif, tente de le redémarrer
         3) Tente d'écrire les données audio dans le flux, en s'assurant que les données sont correctement formatées pour l'audio (int16, mono)
-        4) Si une erreur survient, affiche un message d'erreur.
+        4) Si une erreur survient, affiche un message d'erreur
 
         """
         # 1)
