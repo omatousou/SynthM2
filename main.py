@@ -1,7 +1,5 @@
 import sys
 import numpy as np
-from math import gcd, lcm
-from fractions import Fraction
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt, QTimer
 from generator import SignalGenerator
@@ -76,7 +74,7 @@ class App:
             Qt.Key_L: calc_freq(74),  # Ré
 
             # Touches Noires
-            Qt.Key_A: calc_freq(61),  # Do#
+            Qt.Key_Z: calc_freq(61),  # Do#
             Qt.Key_E: calc_freq(63),  # Ré#
             Qt.Key_T: calc_freq(66),  # Fa#
             Qt.Key_Y: calc_freq(68),  # Sol#
