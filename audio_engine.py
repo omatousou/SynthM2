@@ -17,7 +17,7 @@ class AudioEngine:
             self.stream.start()
         # 3)    
         except Exception as e:
-            print(f"Error initializing audio stream: {e}")
+            print(f"Erreur lors de l'initialisation du flux audio : {e}")
             self.stream = None
 
     def play(self, data):
@@ -37,7 +37,7 @@ class AudioEngine:
                 self.stream = sd.OutputStream(samplerate=self.fs, channels=1, dtype='int16') # Tente de redémarrer le flux audio
                 self.stream.start() # Démarre le flux audio
             except Exception as e: # Si une erreur survient lors du redémarrage du flux audio
-                print(f"Error restarting audio stream: {e}") # Affiche un message d'erreur
+                print(f"Erreur lors du redémarrage du flux audio : {e}") # Affiche un message d'erreur
                 return # Quitte la méthode si le flux audio ne peut pas être redémarré
         # 3)
         try:
@@ -52,7 +52,7 @@ class AudioEngine:
             self.stream.write(data)
         # 4)
         except Exception as e: # Si une erreur survient lors de la lecture des données audio
-            print(f"Error playing audio: {e}") # Affiche un message d'erreur
+            print(f"Erreur lors de la lecture des données audio : {e}") # Affiche un message d'erreur
 
     def terminate(self):
         """Termine le flux audio proprement
@@ -64,4 +64,4 @@ class AudioEngine:
                 self.stream.stop() # Tente de stopper le flux audio
                 self.stream.close() # Tente de fermer le flux audio
             except Exception as e: # Si une erreur survient lors de la terminaison du flux audio
-                print(f"Error terminating audio: {e}") # Affiche un message d'erreur
+                print(f"Erreur lors de la terminaison du flux audio : {e}") # Affiche un message d'erreur
