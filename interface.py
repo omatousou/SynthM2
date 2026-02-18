@@ -187,8 +187,8 @@ class SynthInterface(QMainWindow):
 
     def closeEvent(self, event):
         """
-        1. Émet le signal close_signal pour prévenir la fermeture de l'application.
-        2. Accepte l'événement de fermeture (ferme la fenêtre proprement).
+        1. Émet le signal close_signal pour prévenir la fermeture de l'application
+        2. Accepte l'événement de fermeture (ferme la fenêtre proprement)
         """
         # 1) 
         self.close_signal.emit()
