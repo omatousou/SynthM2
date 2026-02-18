@@ -17,7 +17,7 @@ class SignalGenerator:
        
         output: Tuple (t, sig) où t est un tableau de temps et sig est le signal audio correspondant, normalisé et converti en int16
          
-         1. Génère un signal audio de la durée spécifiée (duration) en combinant les fréquences (freqs) et les phases (phases) selon le type d'onde (wave_type).
+         1. Génère un signal audio de la durée spécifiée (duration) en combinant les fréquences (freqs) et les phases (phases) selon le type d'onde (wave_type)
          2. Retourne un tuple (t, sig)
         """
         # 1)
