@@ -165,7 +165,7 @@ class SynthInterface(QMainWindow):
         3. Émet le signal key_pressed avec la touche pressée (event.key())
         """
         if not event.isAutoRepeat(): # 1)
-            self.update_visual_key(event.key(), True) # 2)
+            self.update_visual_key(event.key(), True) # 2) L'argument pressed=True pour indiquer que la touche est pressée
             self.key_pressed.emit(event.key()) # 3)
 
     def keyReleaseEvent(self, event):
@@ -175,7 +175,7 @@ class SynthInterface(QMainWindow):
         3. Émet le signal key_released avec la touche relâchée (event.key())
         """
         if not event.isAutoRepeat(): # 1)
-            self.update_visual_key(event.key(), False) # 2)
+            self.update_visual_key(event.key(), False)  # 2) L'argument pressed=False pour indiquer que la touche est relâchée
             self.key_released.emit(event.key()) # 3
 
     def update_display(self, t, data):
